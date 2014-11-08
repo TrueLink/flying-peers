@@ -3,7 +3,7 @@ flying-peers
 
 Flying Peers visualization
 
-See live: https://tvori.info/jit/peers/
+See live: http://p2p.expert/
 
 Javascript on canvas, 2014 ;) by wizzard0
 
