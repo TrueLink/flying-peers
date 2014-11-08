@@ -1,0 +1,271 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Flying Peers visualization</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/randomcolor/0.1.1/randomColor.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        #container {
+            margin-left: auto;
+            margin-right: auto;
+            /*width: 1002px;*/
+            margin-bottom: -20px;
+            text-align: center;
+        }
+
+            #container canvas {
+                display: block;
+                /*border: 1px solid red;*/
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+        canvas {
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: -o-crisp-edges;
+            image-rendering: -o-crisp-edges;
+            image-rendering: pixelated;
+            -ms-interpolation-mode: nearest-neighbor;
+        }
+
+        body {
+            background-color: #000025;
+            background-image: url('bg.png');
+            background-position: center top;
+            background-size: 100%;
+        }
+
+            body.badbrowser {
+                background-image: url('fail.png');
+                background-size: contain contain;
+            }
+
+
+        footer {
+            color: #337;
+            font: 12px sans-serif;
+            text-align: center;
+            padding-left:200px;
+        }
+
+            footer a {
+                color: #447;
+            }
+
+        .mute, .mute a {
+            color: #113;
+        }
+
+        footer:hover a {
+            color: #88f;
+        }
+
+        footer:hover .mute {
+            color: #558;
+        }
+    </style>
+</head>
+<body>
+    <div id="wrapper">
+        <div id="container">
+
+        </div>
+    </div>
+    <footer>
+        <p class="copyright">&copy; 2014 <a href="https://tvori.info/">Oleksandr Nikitin</a><span class="mute">, <a href="https://github.com/wizzard0/flying-peers">source code</a>, <span id="pts"></span> peers rendered.</span></p>
+    </footer>
+    <script>
+        document.addEventListener("DOMContentLoaded", function (event) {
+            function colorString(rgb, a) {
+                return 'rgba(' + rgb.join(', ') + ',' + a + ')';
+            }
+
+            function peer() {
+                var vm = 1;
+                var rm = 1;
+                var baseHue = 'monochrome';
+                if (Math.random() < 0.05) { // fast
+                    vm = 2;
+                    baseHue = 'red';
+                } else if (Math.random() < 0.25) { // slow
+                    vm = 0.25;
+                    rm = 1.5;
+                }
+                this.baseColor = randomColor({ hue: baseHue, format: 'rgbArray' });
+                this.x = Math.random() * c.width; this.y = Math.random() * c.height;
+                this.vx = (-.5 + Math.random()) * vm;
+                this.vy = (-.5 + Math.random()) * vm;
+                this.radius = (Math.random() * 1.3 + 0.5) * rm;
+                if (this.radius > 1.7) {
+                    this.radius = 1.7;
+                }
+                this.phase = Math.random() * 20; this.freq = Math.random() * 3 + 1;
+            }
+
+            peer.prototype.update = function () {
+                var mult = Math.sin(g.time * this.freq + this.phase);
+                if (mult < 0.01) mult = 0.01;
+                this.mult = Math.sqrt(mult);
+                this.color = colorString(this.baseColor, mult);
+                this.amt = 0;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, 2 * Math.PI, false);
+                ctx.fill();
+            };
+
+
+            function lines() {
+                var grm = g.radiusMult;
+                var i;
+                for (i = 0; i < g.total; i++) {
+                    var peerA = peers[i];
+                    var im = peerA.mult;
+                    if (im < 0.2 || peerA.amt > peerA.radius * grm * im) { continue; }
+                    var ax = peerA.x; var ay = peerA.y;
+                    for (j = 0; j < g.total; j++) {
+                        var peerB = peers[j]; var jm = peerB.mult;
+                        if (i === j || jm < 0.2 || peerB.amt > peerB.radius * grm * jm) { continue; }
+                        var bx = peerB.x; var by = peerB.y;
+                        var md = 100; var md2 = 20; var md3 = 150;
+                        var factors = 0;
+                        if (ax - bx < md2 && ay - by < md2 && ax - bx > -md2 && ay - by > -md2) { factors += 2; }
+                        else if (ax - bx < md && ay - by < md && ax - bx > -md && ay - by > -md) { factors += 1; }
+                        if (ax - focusLock.x < md3 && ay - focusLock.y < md3
+                            && ax - focusLock.x > -md3 && ay - focusLock.y > -md3) { factors += 1; }
+
+                        if (factors >= 2) {
+                            peerA.amt += 1; peerB.amt += 1;
+                            var grad = ctx.createLinearGradient(ax, ay, bx, by);
+                            grad.addColorStop(0, peerA.color);
+                            grad.addColorStop(1, peerB.color);
+
+                            ctx.strokeStyle = grad;
+                            ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.closePath();
+                        }
+                    }
+                }
+                for (i = 0; i < g.total; i++) {
+                    var a = peers[i];
+                    // bounce
+                    if (a.y < 0 || a.y > c.height) { a.vx = a.vx; a.vy = -a.vy }
+                    if (a.x < 0 || a.x > c.width) { a.vx = -a.vx; a.vy = a.vy }
+                    // move
+                    a.x += a.vx; a.y += a.vy
+                }
+            }
+
+            function animLoop(render, element) {
+                var targetFps = 15;
+                var then = Date.now();
+                var interval = 1000 / targetFps;
+                var delta;
+                var now;
+                function loop() {
+                    // stop the loop if render returned false
+                    now = +Date.now();
+                    delta = now - then;
+                    if (delta > interval) {
+                        render();
+                        then = now - (delta % interval);
+                    }
+                    requestAnimationFrame(loop, element);
+                }
+                loop();
+            }
+
+            function renderFrame() {
+                if (needReinit) { reinit(); return; }
+                ctx.clearRect(0, 0, c.width, c.height);
+                //ctx.save();
+                //ctx.fillStyle = "#668";
+                //ctx.translate(10, 10);
+                //ctx.rotate(Math.PI / 2);
+                //ctx.font = "12px sans-serif";
+                //ctx.fillText("© 2014 Oleksandr Nikitin", 0, 0);
+                //ctx.fillStyle = "#444";
+                //ctx.fillText(g.total + " " + g.w + "x" + g.h + " frame " + g.fn, 160, 0);
+                //ctx.restore();
+                g.time += 0.02;
+                g.fn += 1;
+                for (var i = 0; i < g.total; i++) {
+                    var dot = peers[i];
+                    dot.update();
+                }
+                lines();
+                return true;
+            }
+
+            var c, ctx, g, peers, focusLock, needReinit = true;
+            function reinit() {
+                needReinit = false;
+                var badBrowser = false;
+                if (c) {
+                    document.querySelector("#container").removeChild(c);
+                }
+                if (navigator.userAgent.match(/((Mozilla|Mobile|Gecko).*?){3}/) != null) {
+                    badBrowser = true;
+                    document.querySelector("body").setAttribute('class', 'badbrowser');
+                    throw new Error("mobile firefox is crap");
+                }
+                var sizeX = window.innerWidth;
+                var sizeY = window.innerHeight - 20;
+                if (sizeX < 320) sizeX = 320;
+                if (sizeX > 2000) sizeX = 2000;
+                if (sizeY < 240) sizeY = 240;
+                if (sizeY > 1000) sizeY = 1000;
+                var amt = Math.floor((sizeX * sizeY * 300) / (800 * 1000));
+                if (amt > 700) amt = 700;
+                if (amt < 15) amt = 15;
+                document.querySelector("#pts").innerHTML = amt.toString();
+                console.log('using ', amt, 'points at ', sizeX, sizeY);
+                c = document.createElement('canvas');
+                c.width = sizeX - 10;
+                c.height = sizeY - 10;
+                c.style.display = "block";
+                c.style.marginTop = c.style.marginBottom = Math.floor((window.innerHeight - 20 - sizeY) * 0.4) + "px";
+                document.querySelector("#container").appendChild(c);
+                ctx = c.getContext("2d");
+                ctx.imageSmoothingEnabled = false;
+                ctx.msImageSmoothingEnabled = false;
+                ctx.mozImageSmoothingEnabled = false;
+                ctx.lineWidth = .3;
+                g = {
+                    time: 0,
+                    total: amt,
+                    w: sizeX,
+                    h: sizeY,
+                    fn: 0,
+                    radiusMult: 7,
+                    badBrowser: badBrowser
+                };
+                focusLock = {
+                    x: c.width / 2,
+                    y: c.height / 2
+                };
+                peers = [];
+                for (var pi = 0; pi < g.total; pi++) {
+                    peers.push(new peer());
+                }
+                c.addEventListener("mousemove", function (evt) {
+                    focusLock.x = evt.clientX; focusLock.y = evt.clientY;
+                });
+                c.addEventListener("mouseleave", function (evt) {
+                    focusLock.x = c.width / 2; focusLock.y = c.height / 2;
+                });
+            }
+
+            window.addEventListener('resize', function () { needReinit = true });
+
+            animLoop(renderFrame, c);
+        });
+
+    </script>
+</body>
+</html>
